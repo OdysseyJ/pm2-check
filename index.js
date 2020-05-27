@@ -9,21 +9,21 @@
 // <bitbar.dependencies>node.js</bitbar.dependencies>
 // <bitbar.abouturl>https://github.com/yenbekbay/pm2-check</bitbar.abouturl>
 
-'use strict';
+"use strict";
 
-const _ = require('lodash');
-const bitbar = require('bitbar');
-const exec = require('ssh-exec');
-const isOnline = require('is-online');
-const Rx = require('rx-lite');
+const _ = require("lodash");
+const bitbar = require("bitbar");
+const exec = require("ssh-exec");
+const isOnline = require("is-online");
+const Rx = require("rx-lite");
 
-const config = require('./config');
+const config = require("./config");
 
-const bulletSymbol = '●';
+const bulletSymbol = "●";
 const colors = {
-  red: '#c91b00',
-  green: '#00c200',
-  yellow: '#c7c400'
+  red: "#c91b00",
+  green: "#00c200",
+  yellow: "#c7c400",
 };
 
 isOnline((err, online) => {
@@ -32,82 +32,97 @@ isOnline((err, online) => {
       {
         text: bulletSymbol,
         color: colors.yellow,
-        dropdown: false
+        dropdown: false,
       },
       bitbar.sep,
       {
-        text: 'No internet connection'
+        text: "No internet connection",
       },
       bitbar.sep,
       {
-        text: 'Refresh',
-        refresh: true
-      }
+        text: "Refresh",
+        refresh: true,
+      },
     ]);
   }
 
-  Rx.Observable
-    .zip(config.servers.map(({ name, user, host }) => Rx.Observable
-      .fromNodeCallback(exec)('sudo pm2 list', { user, host })
-      .map(([stdout, stderr]) => {
+  Rx.Observable.zip(
+    config.servers.map(({ name, user, host, key }) =>
+      Rx.Observable.fromNodeCallback(exec)("sudo pm2 list", {
+        user,
+        host,
+        key,
+      }).map(([stdout, stderr]) => {
         const table = stdout.match(/┌((?!Module)(.|\s))*┘/)[0];
 
-        const legendLine = table.match(/^│\sApp name.*/m)[0];
-        const appLines = table.match(/^│\s(?!App name).*/gm);
+        // const legendLine = table.match(/^│\sApp name.*/m)[0];
+        const Lines = table.match(/^│\s(?!App name).*/gm);
 
-        const legend = _(legendLine).split('│').map(_.trim).compact().value();
-        const apps = appLines
-          .map(line => _(line).split('│').map(_.trim).compact().value())
-          .map(app => _.zipObject(legend, app));
+        // const legend = _(legendLine).split("│").map(_.trim).compact().value();
+        const apps = Lines.map((line) => {
+          const objects = line.split("│");
+          return {
+            name: objects[2].trim(),
+            uptime: objects[7].trim(),
+            status: objects[9].trim(),
+            cpu: objects[10].trim(),
+            mem: objects[11].trim(),
+          };
+        }).filter((object) => {
+          return object.name !== "name";
+        });
 
-        return [name].concat(apps.map(app => ({
-          text: `- ${app['App name']} ●`,
-          color: app.status === 'online' ? colors.green : colors.red
-        })));
+        return [name].concat(
+          apps.map((app, index) => ({
+            text: ` ● ${app.name} ${app.uptime} ${app.status} ${app.cpu} ${app.mem}`,
+            color: app.status === "online" ? colors.green : colors.red,
+          }))
+        );
       })
-    ))
-    .subscribe(
-      results => {
-        const failingApp = _(results)
-          .flatten()
-          .filter(_.isObject)
-          .find(['color', colors.red]);
+    )
+  ).subscribe(
+    (results) => {
+      const failingApp = _(results)
+        .flatten()
+        .filter(_.isObject)
+        .find(["color", colors.red]);
 
-        let output = [
-          {
-            text: bulletSymbol,
-            color: failingApp ? colors.red : colors.green,
-            dropdown: false
-          }
-        ];
-        results.forEach(group => {
-          output.push(bitbar.sep);
-          output.push(...group);
-        });
-        output.push(bitbar.sep, {
-          text: 'Refresh',
-          refresh: true
-        });
+      let output = [
+        {
+          text: bulletSymbol,
+          color: failingApp ? colors.red : colors.green,
+          dropdown: false,
+        },
+      ];
+      results.forEach((group) => {
+        output.push(bitbar.sep);
+        output.push(...group);
+      });
+      output.push(bitbar.sep, {
+        text: "Refresh",
+        refresh: true,
+      });
 
-        bitbar(output);
-      },
-      err => {
-        bitbar([
-          {
-            text: bulletSymbol,
-            color: colors.red,
-            dropdown: false
-          },
-          bitbar.sep,
-          {
-            text: err.message
-          },
-          bitbar.sep,
-          {
-            text: 'Refresh',
-            refresh: true
-          }
-        ]);
-      }
-    );
+      bitbar(output);
+    },
+    (err) => {
+      bitbar([
+        {
+          text: bulletSymbol,
+          color: colors.red,
+          dropdown: false,
+        },
+        bitbar.sep,
+        {
+          text: err.message,
+        },
+        bitbar.sep,
+        {
+          text: "Refresh",
+          refresh: true,
+        },
+      ]);
+    }
+  );
 });
+
